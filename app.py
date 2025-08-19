@@ -181,9 +181,9 @@ def main_app():
 
     # --- Session State Initialization ---
     if 'diary_entries' not in st.session_state:
-        # Initialize with the example data from your HTML
+        # Initialize with the example data
         initial_data = {
-            'Diary Date': [datetime(2025, 8, 15).date()],
+            'Diary Date': [datetime(2025, 8, 19).date()],
             'Engineer': ['FS'],
             'Location/BH ID': ['CB5-22'],
             'Activities Summary': ['Drilling 14.5m-20.5m, BH completion, install/backfill activities'],
@@ -196,11 +196,14 @@ def main_app():
 
     # --- App Layout ---
 
+    # Get the project title from session state to display in the header, default if not set
+    scheme_title = st.session_state.get('scheme_name', 'Site Diary Verification Log')
+    
     # Header Section
-    st.markdown("""
+    st.markdown(f"""
     <div class="header">
-        <h1>Site Diary Verification Log</h1>
-        <p>Beauly - Peterhead Package 2 - Investigation Works</p>
+        <h1>{scheme_title}</h1>
+        <p>Site Diary Verification Log</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -208,16 +211,42 @@ def main_app():
     with st.container():
         st.subheader("Project Details")
         cols = st.columns(4)
-        project_no = cols[0].text_input("Project No:", value="CGN/05281", disabled=True)
-        scheme = cols[1].text_input("Scheme:", value="Beauly - Peterhead Package 2")
-        verifier = cols[2].text_input("Verifier:", placeholder="Your Name")
-        verification_date = cols[3].date_input("Verification Date:", value=datetime.today())
+
+        # Column 1: Project Number Dropdown
+        project_no = cols[0].selectbox(
+            "Project No:",
+            options=["LT037", "LT359"],
+            key="project_no"
+        )
+
+        # Column 2: Scheme (updates based on Project No)
+        scheme_name = "Beauly to Blackhillock" if project_no == "LT037" else "Blackhillock to Peterhead"
+        st.session_state['scheme_name'] = scheme_name # Store in session state for header
+        cols[1].text_input("Scheme:", value=scheme_name, disabled=True)
+        
+        # Column 3: GI Package Dropdown
+        gi_package = cols[2].selectbox(
+            "GI Package:",
+            options=["Package 1", "Package 2", "Package 3", "Package 4", "Package 5"],
+            key="gi_package"
+        )
+        
+        # Column 4: Subcontractor (updates based on GI Package)
+        subcontractor_map = {
+            "Package 1": "Natural Power",
+            "Package 2": "CGL",
+            "Package 3": "IGNE",
+            "Package 4": "CGL",
+            "Package 5": "IGNE"
+        }
+        subcontractor_name = subcontractor_map.get(gi_package, "")
+        cols[3].text_input("Subcontractor:", value=subcontractor_name, disabled=True)
 
         project_info_data = {
             "Project No": project_no,
-            "Scheme": scheme,
-            "Verifier": verifier,
-            "Verification Date": verification_date.strftime("%Y-%m-%d")
+            "Scheme": scheme_name,
+            "GI Package": gi_package,
+            "Subcontractor": subcontractor_name
         }
 
 
@@ -283,24 +312,12 @@ def main_app():
     # Signature Section
     with st.container():
         st.subheader("Verification Sign-off")
-        sig_cols = st.columns(3)
-        with sig_cols[0]:
-            st.markdown("**Client Verifier**")
-            client_name = st.text_input("Print Name", key="client_name")
-            client_date = st.date_input("Date", key="client_date")
-        with sig_cols[1]:
-            st.markdown("**Project Manager**")
-            pm_name = st.text_input("Print Name", key="pm_name")
-            pm_date = st.date_input("Date", key="pm_date")
-        with sig_cols[2]:
-            st.markdown("**Senior Engineer**")
-            se_name = st.text_input("Print Name", key="se_name")
-            se_date = st.date_input("Date", key="se_date")
+        st.markdown("**Site Engineer**")
+        se_name = st.text_input("Print Name", key="se_name")
+        se_date = st.date_input("Date", key="se_date")
 
         signature_data = {
-            "Client Verifier": {"name": client_name, "date": client_date},
-            "Project Manager": {"name": pm_name, "date": pm_date},
-            "Senior Engineer": {"name": se_name, "date": se_date}
+            "Site Engineer": {"name": se_name, "date": se_date}
         }
 
     # --- Sidebar for Downloads ---
