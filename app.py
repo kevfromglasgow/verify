@@ -52,7 +52,6 @@ def local_css():
 # --- Data Handling Functions ---
 def get_name_from_filename(filename):
     if filename:
-        # Handles names like '2025-08-19_Kevin Dorward.json' -> 'Kevin Dorward'
         base_name = os.path.splitext(os.path.basename(filename))[0]
         if '_' in base_name:
             return base_name.split('_', 1)[-1]
@@ -67,59 +66,78 @@ def to_excel(daily_data):
     return output.getvalue()
 
 def generate_pdf(project_info, daily_data, checklist_items, notes, signatures):
+    
+    # --- PDF Helper Function for clean layout ---
+    def write_label_value_pair(pdf, label, value, label_w=45, line_h=6):
+        y_start = pdf.get_y()
+        # Write label (bold)
+        pdf.set_font("Helvetica", 'B', 10)
+        pdf.multi_cell(label_w, line_h, sanitize_text(label) + ":", align='L')
+        
+        # Set position for the value cell, aligning it with the start of the label
+        pdf.set_xy(pdf.l_margin + label_w, y_start)
+        
+        # Write value (regular)
+        pdf.set_font("Helvetica", '', 10)
+        pdf.multi_cell(0, line_h, sanitize_text(value), align='L')
+
+    # --- Main PDF Generation ---
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Helvetica", size=12)
+    # Ensure automatic page breaks are on to handle long content
+    pdf.set_auto_page_break(auto=True, margin=15)
+    
     def sanitize_text(text):
         return str(text).encode('latin-1', 'replace').decode('latin-1')
 
+    # Header
+    pdf.set_font("Helvetica", 'B', 16)
     pdf.set_fill_color(44, 62, 80)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 15, "Daily Site Diary Verification Report", 1, 1, 'C', 1)
+    pdf.cell(0, 12, "Daily Site Diary Verification Report", 1, 1, 'C', 1)
     pdf.set_text_color(0, 0, 0)
     
+    # Project Info
     pdf.ln(8)
-    pdf.set_font("Helvetica", 'B', size=14)
-    pdf.cell(0, 10, "Project Information", 0, 1, 'L')
-    pdf.set_font("Helvetica", size=11)
+    pdf.set_font("Helvetica", 'B', 12)
+    pdf.cell(0, 8, "Project Information", 0, 1, 'L')
+    pdf.set_font_size(10)
     for key, value in project_info.items():
-        pdf.cell(40, 8, sanitize_text(key) + ":", 0, 0)
-        pdf.cell(0, 8, sanitize_text(value), 0, 1)
+        write_label_value_pair(pdf, key, value)
 
-    pdf.ln(8)
-    pdf.set_font("Helvetica", 'B', size=14)
-    pdf.cell(0, 10, "Daily Entry Details", 0, 1, 'L')
-    
+    # Daily Entry Details
+    pdf.ln(4)
+    pdf.set_font("Helvetica", 'B', 12)
+    pdf.cell(0, 8, "Daily Entry Details", 0, 1, 'L')
+    pdf.set_font_size(10)
     for key, value in daily_data.items():
-        y_before = pdf.get_y()
-        pdf.set_font("Helvetica", 'B', size=11)
-        pdf.multi_cell(45, 8, sanitize_text(key) + ":", align='L')
-        pdf.set_xy(pdf.l_margin + 45, y_before)
-        pdf.set_font("Helvetica", '', size=11)
-        pdf.multi_cell(0, 8, sanitize_text(value), align='L')
-    
-    pdf.ln(8)
-    pdf.set_font("Helvetica", 'B', size=14)
-    pdf.cell(0, 10, "Verification Checklist", 0, 1, 'L')
-    pdf.set_font("Helvetica", size=11)
+        write_label_value_pair(pdf, key, value)
+
+    # Verification Checklist
+    pdf.ln(4)
+    pdf.set_font("Helvetica", 'B', 12)
+    pdf.cell(0, 8, "Verification Checklist", 0, 1, 'L')
+    pdf.set_font("Helvetica", '', 10)
     for item, checked in checklist_items.items():
         status = "[X]" if checked else "[ ]"
-        pdf.cell(0, 8, f"{status} {sanitize_text(item)}", 0, 1)
+        pdf.cell(0, 6, f"{status} {sanitize_text(item)}", 0, 1)
     
-    pdf.ln(5)
-    pdf.set_font("Helvetica", 'B', size=14)
-    pdf.cell(0, 10, "Overall Verification Notes", 0, 1, 'L')
-    pdf.set_font("Helvetica", size=11)
-    pdf.multi_cell(0, 5, sanitize_text(notes))
+    # Overall Notes
+    pdf.ln(4)
+    pdf.set_font("Helvetica", 'B', 12)
+    pdf.cell(0, 8, "Overall Verification Notes", 0, 1, 'L')
+    pdf.set_font("Helvetica", '', 10)
+    pdf.multi_cell(0, 6, sanitize_text(notes))
     
-    pdf.ln(10)
-    pdf.set_font("Helvetica", 'B', size=14)
-    pdf.cell(0, 10, "Verification Sign-off", 0, 1, 'L')
-    pdf.set_font("Helvetica", size=11)
+    # Signature
+    pdf.ln(4)
+    pdf.set_font("Helvetica", 'B', 12)
+    pdf.cell(0, 8, "Verification Sign-off", 0, 1, 'L')
+    pdf.set_font("Helvetica", '', 10)
     for title, info in signatures.items():
         date_str = info['date'] if isinstance(info['date'], str) else info['date'].strftime('%Y-%m-%d')
         signature_line = f"{sanitize_text(title)}: {sanitize_text(info['name'])} (Date: {date_str})"
-        pdf.cell(0, 8, signature_line, 0, 1)
+        pdf.cell(0, 6, signature_line, 0, 1)
         
     return bytes(pdf.output())
 
@@ -235,10 +253,7 @@ def main_app():
         vc1, vc2 = st.columns(2)
         st.session_state.daily_entry['Verified By'] = vc1.text_input("Verified By", value=st.session_state.daily_entry['Verified By'])
         st.session_state.daily_entry['Verification Date'] = vc2.date_input("Verification Date", value=st.session_state.daily_entry['Verification Date'])
-        
-        # --- FIX: Corrected typo from .session_state to st.session_state ---
         st.session_state.daily_entry['Issues/Notes'] = st.text_area("Issues/Notes for this Entry", value=st.session_state.daily_entry['Issues/Notes'])
-        
         st.subheader("Verification Checklist")
         cols = st.columns(2)
         for i, option in enumerate(st.session_state.checklist_state.keys()):
