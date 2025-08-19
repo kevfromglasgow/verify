@@ -56,7 +56,6 @@ def get_name_from_filename(filename):
     return ""
 
 def to_excel(daily_data):
-    # Convert the single dictionary of daily data to a single-row DataFrame
     df = pd.DataFrame([daily_data])
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -70,13 +69,11 @@ def generate_pdf(project_info, daily_data, checklist_items, notes, signatures):
     def sanitize_text(text):
         return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-    # Header
     pdf.set_fill_color(44, 62, 80)
     pdf.set_text_color(255, 255, 255)
     pdf.cell(0, 15, "Daily Site Diary Verification Report", 1, 1, 'C', 1)
     pdf.set_text_color(0, 0, 0)
     
-    # Project Info
     pdf.ln(8)
     pdf.set_font("Helvetica", 'B', size=14)
     pdf.cell(0, 10, "Project Information", 0, 1, 'L')
@@ -85,7 +82,6 @@ def generate_pdf(project_info, daily_data, checklist_items, notes, signatures):
         pdf.cell(40, 8, sanitize_text(key) + ":", 0, 0)
         pdf.cell(0, 8, sanitize_text(value), 0, 1)
 
-    # Daily Entry Details
     pdf.ln(8)
     pdf.set_font("Helvetica", 'B', size=14)
     pdf.cell(0, 10, "Daily Entry Details", 0, 1, 'L')
@@ -94,9 +90,9 @@ def generate_pdf(project_info, daily_data, checklist_items, notes, signatures):
         pdf.set_font("Helvetica", 'B', size=11)
         pdf.cell(45, 8, sanitize_text(key) + ":", 0, 0)
         pdf.set_font("Helvetica", size=11)
-        pdf.multi_cell(0, 8, sanitize_text(value), 0, 1)
+        # FIX: Corrected arguments for multi_cell, using align='L' instead of integer 1
+        pdf.multi_cell(0, 8, sanitize_text(value), border=0, align='L')
 
-    # Checklist, Notes, Signatures... (rest of the PDF generation)
     pdf.ln(8)
     pdf.set_font("Helvetica", 'B', size=14)
     pdf.cell(0, 10, "Verification Checklist", 0, 1, 'L')
@@ -126,21 +122,17 @@ def generate_pdf(project_info, daily_data, checklist_items, notes, signatures):
 def main_app():
     local_css()
 
-    # Initialize session state for a single-day report
     if 'app_loaded' not in st.session_state:
         st.session_state.daily_entry = {
-            "Diary Date": datetime(2025, 8, 19).date(),
-            "Engineer": "", "Location/BH ID": "", "Activities Summary": "",
-            "Verification Status": "PENDING", "Verified By": "",
-            "Verification Date": datetime(2025, 8, 19).date(), "Issues/Notes": ""
+            "Diary Date": datetime.now().date(), "Engineer": "", "Location/BH ID": "", "Activities Summary": "",
+            "Verification Status": "PENDING", "Verified By": "", "Verification Date": datetime.now().date(), "Issues/Notes": ""
         }
         st.session_state.checklist_state = {key: False for key in ["Time records are consistent and realistic", "Activities align with project schedule and scope", "Equipment lists are accurate and complete", "Personnel records match expected crew", "Weather conditions are appropriately recorded", "Safety activities (toolbox talks, briefings) are documented", "Progress notes are detailed and accurate", "All required signatures are present"]}
         st.session_state.overall_notes = ""
         st.session_state.se_name = ""
-        st.session_state.se_date = datetime(2025, 8, 19).date()
+        st.session_state.se_date = datetime.now().date()
         st.session_state.app_loaded = True
 
-    # --- SIDEBAR: Actions ---
     with st.sidebar:
         st.title("Actions")
         st.header("Save & Load Report")
@@ -151,11 +143,9 @@ def main_app():
             if st.button("Load Selected Report"):
                 with open(selected_file_to_load, 'r') as f:
                     state = json.load(f)
-                    # Load daily entry, converting dates back
                     st.session_state.daily_entry = state['daily_entry']
                     st.session_state.daily_entry['Diary Date'] = datetime.strptime(st.session_state.daily_entry['Diary Date'], '%Y-%m-%d').date()
                     st.session_state.daily_entry['Verification Date'] = datetime.strptime(st.session_state.daily_entry['Verification Date'], '%Y-%m-%d').date()
-                    
                     st.session_state.checklist_state = state['checklist_state']
                     st.session_state.overall_notes = state['overall_notes']
                     st.session_state.se_name = get_name_from_filename(selected_file_to_load)
@@ -172,17 +162,13 @@ def main_app():
         if st.button("Save Current Report"):
             verifier_name = get_name_from_filename(file_to_save)
             if verifier_name and verifier_name != "Your Name":
-                # Update state with name from filename before saving
                 st.session_state.se_name = verifier_name
                 if not st.session_state.daily_entry['Engineer']: st.session_state.daily_entry['Engineer'] = verifier_name
                 if not st.session_state.daily_entry['Verified By']: st.session_state.daily_entry['Verified By'] = verifier_name
                 
-                # Create a serializable copy of the daily entry
                 entry_to_save = st.session_state.daily_entry.copy()
                 entry_to_save['Diary Date'] = entry_to_save['Diary Date'].strftime('%Y-%m-%d')
                 entry_to_save['Verification Date'] = entry_to_save['Verification Date'].strftime('%Y-%m-%d')
-
-                # Gather all data for saving
                 project_info_data = {"Project No": st.session_state.project_no, "Scheme": st.session_state.scheme_name, "GI Package": st.session_state.gi_package, "Subcontractor": st.session_state.subcontractor_name}
                 signature_data = {"Site Engineer": {"name": st.session_state.se_name, "date": st.session_state.se_date.strftime('%Y-%m-%d')}}
                 current_state = {
@@ -191,7 +177,6 @@ def main_app():
                     'signature_data': signature_data
                 }
                 
-                # Use a date-based filename for organization
                 final_filename = f"{diary_date_str}_{verifier_name}.json"
                 with open(final_filename, 'w') as f:
                     json.dump(current_state, f, indent=4)
@@ -206,11 +191,10 @@ def main_app():
         final_project_info = {"Project No": st.session_state.get('project_no'), "Scheme": st.session_state.get('scheme_name'), "GI Package": st.session_state.get('gi_package'), "Subcontractor": st.session_state.get('subcontractor_name')}
         final_signature_data = {"Site Engineer": {"name": st.session_state.get('se_name'), "date": st.session_state.get('se_date')}}
         
-        # Prepare a copy of daily data for export, formatting dates
         export_daily_data = st.session_state.daily_entry.copy()
         export_daily_data['Diary Date'] = export_daily_data['Diary Date'].strftime('%d.%m.%Y')
         export_daily_data['Verification Date'] = export_daily_data['Verification Date'].strftime('%d.%m.%Y')
-
+        
         excel_data = to_excel(export_daily_data)
         st.download_button(label="📥 Download as XLSX", data=excel_data, file_name=f"Daily_Report_{diary_date_str}.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         
@@ -249,7 +233,6 @@ def main_app():
         st.session_state.daily_entry['Verified By'] = vc1.text_input("Verified By", value=st.session_state.daily_entry['Verified By'])
         st.session_state.daily_entry['Verification Date'] = vc2.date_input("Verification Date", value=st.session_state.daily_entry['Verification Date'])
         st.session_state.daily_entry['Issues/Notes'] = st.text_area("Issues/Notes for this Entry", value=st.session_state.daily_entry['Issues/Notes'])
-
         st.subheader("Verification Checklist")
         cols = st.columns(2)
         for i, option in enumerate(st.session_state.checklist_state.keys()):
