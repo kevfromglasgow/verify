@@ -127,7 +127,6 @@ def main_app():
     local_css()
 
     if 'app_loaded' not in st.session_state:
-        # Initialize an empty state
         st.session_state.diary_entries = pd.DataFrame({
             'Diary Date': pd.Series(dtype='datetime64[ns]'), 'Engineer': pd.Series(dtype='str'),
             'Location/BH ID': pd.Series(dtype='str'), 'Activities Summary': pd.Series(dtype='str'),
@@ -142,10 +141,9 @@ def main_app():
         ]}
         st.session_state.overall_notes = ""
         st.session_state.se_name = ""
-        st.session_state.se_date = datetime(2025, 8, 19).date() # Use static date for consistency
+        st.session_state.se_date = datetime(2025, 8, 19).date()
         st.session_state.app_loaded = True
 
-    # --- SIDEBAR: Save, Load, and Export ---
     with st.sidebar:
         st.title("Actions")
         st.header("Save & Load Report")
@@ -156,14 +154,9 @@ def main_app():
             if st.button("Load Selected Report"):
                 with open(selected_file_to_load, 'r') as f:
                     state = json.load(f)
-                    
-                    # Read the dataframe from JSON
                     df_loaded = pd.read_json(state['diary_entries'])
-                    
-                    # *** FIX: Convert date columns from text back to datetime objects ***
                     df_loaded['Diary Date'] = pd.to_datetime(df_loaded['Diary Date'], errors='coerce')
                     df_loaded['Verification Date'] = pd.to_datetime(df_loaded['Verification Date'], errors='coerce')
-                    
                     st.session_state.diary_entries = df_loaded
                     st.session_state.checklist_state = state['checklist_state']
                     st.session_state.overall_notes = state['overall_notes']
@@ -183,8 +176,12 @@ def main_app():
             if verifier_name and verifier_name != "Your Name":
                 st.session_state.se_name = verifier_name
                 df_to_save = st.session_state.diary_entries.copy()
-                df_to_save['Verified By'] = df_to_save['Verified By'].replace(['', None], verifier_name)
+                
+                # *** FIX 2: Also populate empty 'Engineer' fields ***
+                df_to_save['Engineer'] = df_to_save['Engineer'].fillna('').replace('', verifier_name)
+                df_to_save['Verified By'] = df_to_save['Verified By'].fillna('').replace('', verifier_name)
                 st.session_state.diary_entries = df_to_save
+                
                 project_info_data = {"Project No": st.session_state.project_no, "Scheme": st.session_state.scheme_name, "GI Package": st.session_state.gi_package, "Subcontractor": st.session_state.subcontractor_name}
                 signature_data = {"Site Engineer": {"name": st.session_state.se_name, "date": st.session_state.se_date.strftime('%Y-%m-%d')}}
                 current_state = {
@@ -236,6 +233,7 @@ def main_app():
 
     st.subheader("Site Diary Verification Entries")
     st.session_state.diary_entries = st.data_editor(st.session_state.diary_entries, num_rows="dynamic", use_container_width=True, key="data_editor",
+        hide_index=True, # <-- FIX 1: Hide the DataFrame index
         column_config={
             "Diary Date": st.column_config.DateColumn("Diary Date", format="YYYY-MM-DD", required=True),
             "Verification Status": st.column_config.SelectboxColumn("Verification Status", options=["PENDING", "VERIFIED", "ISSUES FOUND"], required=True),
