@@ -52,7 +52,7 @@ def local_css():
 # --- Data Handling Functions ---
 def get_name_from_filename(filename):
     if filename:
-        return os.path.splitext(os.path.basename(filename))[0]
+        return os.path.splitext(os.path.basename(filename))[0].split('_', 1)[-1]
     return ""
 
 def to_excel(daily_data):
@@ -85,14 +85,20 @@ def generate_pdf(project_info, daily_data, checklist_items, notes, signatures):
     pdf.ln(8)
     pdf.set_font("Helvetica", 'B', size=14)
     pdf.cell(0, 10, "Daily Entry Details", 0, 1, 'L')
-    pdf.set_font("Helvetica", size=11)
+    
+    # --- FIX for FPDFException ---
+    # This block now properly handles the layout for multi-line values.
     for key, value in daily_data.items():
+        y_before = pdf.get_y()
         pdf.set_font("Helvetica", 'B', size=11)
-        pdf.cell(45, 8, sanitize_text(key) + ":", 0, 0)
-        pdf.set_font("Helvetica", size=11)
-        # FIX: Corrected arguments for multi_cell, using align='L' instead of integer 1
-        pdf.multi_cell(0, 8, sanitize_text(value), border=0, align='L')
-
+        pdf.multi_cell(45, 8, sanitize_text(key) + ":", align='L')
+        
+        pdf.set_xy(pdf.l_margin + 45, y_before)
+        
+        pdf.set_font("Helvetica", '', size=11)
+        pdf.multi_cell(0, 8, sanitize_text(value), align='L')
+    # --- END FIX ---
+    
     pdf.ln(8)
     pdf.set_font("Helvetica", 'B', size=14)
     pdf.cell(0, 10, "Verification Checklist", 0, 1, 'L')
@@ -137,35 +143,40 @@ def main_app():
         st.title("Actions")
         st.header("Save & Load Report")
         
-        saved_files = glob.glob("*.json")
+        saved_files = sorted(glob.glob("*.json"), reverse=True)
         if saved_files:
             selected_file_to_load = st.selectbox("Select a report to load:", [""] + saved_files, key="load_selector")
             if st.button("Load Selected Report"):
                 with open(selected_file_to_load, 'r') as f:
                     state = json.load(f)
-                    st.session_state.daily_entry = state['daily_entry']
-                    st.session_state.daily_entry['Diary Date'] = datetime.strptime(st.session_state.daily_entry['Diary Date'], '%Y-%m-%d').date()
-                    st.session_state.daily_entry['Verification Date'] = datetime.strptime(st.session_state.daily_entry['Verification Date'], '%Y-%m-%d').date()
-                    st.session_state.checklist_state = state['checklist_state']
-                    st.session_state.overall_notes = state['overall_notes']
-                    st.session_state.se_name = get_name_from_filename(selected_file_to_load)
-                    st.session_state.se_date = datetime.strptime(state['signature_data']['Site Engineer']['date'], '%Y-%m-%d').date()
-                    st.session_state.project_no = state['project_info']['Project No']
-                    st.session_state.gi_package = state['project_info']['GI Package']
-                st.success(f"Successfully loaded '{selected_file_to_load}'")
-                st.rerun()
+                    
+                    # --- FIX for KeyError ---
+                    # Safely get the data, show error if it's an old format
+                    daily_entry_data = state.get('daily_entry')
+                    if daily_entry_data is None:
+                        st.error(f"Error: '{selected_file_to_load}' is an old, incompatible file format. Please delete it and create a new report.")
+                    else:
+                        st.session_state.daily_entry = daily_entry_data
+                        st.session_state.daily_entry['Diary Date'] = datetime.strptime(st.session_state.daily_entry['Diary Date'], '%Y-%m-%d').date()
+                        st.session_state.daily_entry['Verification Date'] = datetime.strptime(st.session_state.daily_entry['Verification Date'], '%Y-%m-%d').date()
+                        st.session_state.checklist_state = state['checklist_state']
+                        st.session_state.overall_notes = state['overall_notes']
+                        st.session_state.se_name = get_name_from_filename(selected_file_to_load)
+                        st.session_state.se_date = datetime.strptime(state['signature_data']['Site Engineer']['date'], '%Y-%m-%d').date()
+                        st.session_state.project_no = state['project_info']['Project No']
+                        st.session_state.gi_package = state['project_info']['GI Package']
+                        st.success(f"Successfully loaded '{selected_file_to_load}'")
+                        st.rerun()
 
         diary_date_str = st.session_state.daily_entry['Diary Date'].strftime('%Y-%m-%d')
-        default_filename = f"report_{diary_date_str}.json"
-        file_to_save = st.text_input("Enter your name to save file:", f"{st.session_state.se_name or 'Your Name'}.json")
+        file_to_save = st.text_input("Enter your name to save file:", f"{st.session_state.se_name or 'Your Name'}")
         
         if st.button("Save Current Report"):
-            verifier_name = get_name_from_filename(file_to_save)
+            verifier_name = file_to_save.strip()
             if verifier_name and verifier_name != "Your Name":
                 st.session_state.se_name = verifier_name
                 if not st.session_state.daily_entry['Engineer']: st.session_state.daily_entry['Engineer'] = verifier_name
                 if not st.session_state.daily_entry['Verified By']: st.session_state.daily_entry['Verified By'] = verifier_name
-                
                 entry_to_save = st.session_state.daily_entry.copy()
                 entry_to_save['Diary Date'] = entry_to_save['Diary Date'].strftime('%Y-%m-%d')
                 entry_to_save['Verification Date'] = entry_to_save['Verification Date'].strftime('%Y-%m-%d')
@@ -176,7 +187,6 @@ def main_app():
                     'checklist_state': st.session_state.checklist_state, 'overall_notes': st.session_state.overall_notes,
                     'signature_data': signature_data
                 }
-                
                 final_filename = f"{diary_date_str}_{verifier_name}.json"
                 with open(final_filename, 'w') as f:
                     json.dump(current_state, f, indent=4)
@@ -190,14 +200,11 @@ def main_app():
         
         final_project_info = {"Project No": st.session_state.get('project_no'), "Scheme": st.session_state.get('scheme_name'), "GI Package": st.session_state.get('gi_package'), "Subcontractor": st.session_state.get('subcontractor_name')}
         final_signature_data = {"Site Engineer": {"name": st.session_state.get('se_name'), "date": st.session_state.get('se_date')}}
-        
         export_daily_data = st.session_state.daily_entry.copy()
         export_daily_data['Diary Date'] = export_daily_data['Diary Date'].strftime('%d.%m.%Y')
         export_daily_data['Verification Date'] = export_daily_data['Verification Date'].strftime('%d.%m.%Y')
-        
         excel_data = to_excel(export_daily_data)
         st.download_button(label="📥 Download as XLSX", data=excel_data, file_name=f"Daily_Report_{diary_date_str}.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        
         pdf_data = generate_pdf(final_project_info, export_daily_data, st.session_state.checklist_state, st.session_state.overall_notes, final_signature_data)
         st.download_button(label="📄 Download as PDF", data=pdf_data, file_name=f"Daily_Report_{diary_date_str}.pdf", mime="application/pdf")
 
@@ -232,7 +239,7 @@ def main_app():
         vc1, vc2 = st.columns(2)
         st.session_state.daily_entry['Verified By'] = vc1.text_input("Verified By", value=st.session_state.daily_entry['Verified By'])
         st.session_state.daily_entry['Verification Date'] = vc2.date_input("Verification Date", value=st.session_state.daily_entry['Verification Date'])
-        st.session_state.daily_entry['Issues/Notes'] = st.text_area("Issues/Notes for this Entry", value=st.session_state.daily_entry['Issues/Notes'])
+        st.session_state.daily_entry['Issues/Notes'] = st.text_area("Issues/Notes for this Entry", value=.session_state.daily_entry['Issues/Notes'])
         st.subheader("Verification Checklist")
         cols = st.columns(2)
         for i, option in enumerate(st.session_state.checklist_state.keys()):
