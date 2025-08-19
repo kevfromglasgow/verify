@@ -52,7 +52,11 @@ def local_css():
 # --- Data Handling Functions ---
 def get_name_from_filename(filename):
     if filename:
-        return os.path.splitext(os.path.basename(filename))[0].split('_', 1)[-1]
+        # Handles names like '2025-08-19_Kevin Dorward.json' -> 'Kevin Dorward'
+        base_name = os.path.splitext(os.path.basename(filename))[0]
+        if '_' in base_name:
+            return base_name.split('_', 1)[-1]
+        return base_name
     return ""
 
 def to_excel(daily_data):
@@ -86,18 +90,13 @@ def generate_pdf(project_info, daily_data, checklist_items, notes, signatures):
     pdf.set_font("Helvetica", 'B', size=14)
     pdf.cell(0, 10, "Daily Entry Details", 0, 1, 'L')
     
-    # --- FIX for FPDFException ---
-    # This block now properly handles the layout for multi-line values.
     for key, value in daily_data.items():
         y_before = pdf.get_y()
         pdf.set_font("Helvetica", 'B', size=11)
         pdf.multi_cell(45, 8, sanitize_text(key) + ":", align='L')
-        
         pdf.set_xy(pdf.l_margin + 45, y_before)
-        
         pdf.set_font("Helvetica", '', size=11)
         pdf.multi_cell(0, 8, sanitize_text(value), align='L')
-    # --- END FIX ---
     
     pdf.ln(8)
     pdf.set_font("Helvetica", 'B', size=14)
@@ -149,9 +148,6 @@ def main_app():
             if st.button("Load Selected Report"):
                 with open(selected_file_to_load, 'r') as f:
                     state = json.load(f)
-                    
-                    # --- FIX for KeyError ---
-                    # Safely get the data, show error if it's an old format
                     daily_entry_data = state.get('daily_entry')
                     if daily_entry_data is None:
                         st.error(f"Error: '{selected_file_to_load}' is an old, incompatible file format. Please delete it and create a new report.")
@@ -239,7 +235,10 @@ def main_app():
         vc1, vc2 = st.columns(2)
         st.session_state.daily_entry['Verified By'] = vc1.text_input("Verified By", value=st.session_state.daily_entry['Verified By'])
         st.session_state.daily_entry['Verification Date'] = vc2.date_input("Verification Date", value=st.session_state.daily_entry['Verification Date'])
-        st.session_state.daily_entry['Issues/Notes'] = st.text_area("Issues/Notes for this Entry", value=.session_state.daily_entry['Issues/Notes'])
+        
+        # --- FIX: Corrected typo from .session_state to st.session_state ---
+        st.session_state.daily_entry['Issues/Notes'] = st.text_area("Issues/Notes for this Entry", value=st.session_state.daily_entry['Issues/Notes'])
+        
         st.subheader("Verification Checklist")
         cols = st.columns(2)
         for i, option in enumerate(st.session_state.checklist_state.keys()):
