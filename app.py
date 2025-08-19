@@ -8,8 +8,37 @@ from fpdf import FPDF
 st.set_page_config(
     page_title="Site Diary Verification Log",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed" # Start with sidebar collapsed
 )
+
+# --- Password Protection ---
+def check_password():
+    """Returns `True` if the user had the correct password."""
+
+    # Use a session state variable to track password correctness
+    if "password_correct" not in st.session_state:
+        st.session_state.password_correct = False
+
+    # If the password is correct, we're done
+    if st.session_state.password_correct:
+        return True
+
+    # Show a login form
+    with st.form("login"):
+        st.title("Login")
+        st.write("Please enter the password to access the application.")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Submit")
+
+        if submitted:
+            # Check if the entered password matches the one in secrets
+            if password == st.secrets.get("password"):
+                st.session_state.password_correct = True
+                st.rerun()  # Rerun the app to show the main content
+            else:
+                st.error("😕 Incorrect password")
+    
+    return False
 
 # --- Custom CSS to replicate your HTML style ---
 def local_css():
@@ -68,8 +97,6 @@ def local_css():
         }
     </style>
     """, unsafe_allow_html=True)
-
-local_css()
 
 # --- Data Handling Functions ---
 
@@ -147,156 +174,164 @@ def generate_pdf(project_info, df, checklist_items, notes, signatures):
 
     return pdf.output(dest='S').encode('latin-1')
 
+# --- Main Application Logic ---
+def main_app():
+    # Apply custom CSS
+    local_css()
 
-# --- Session State Initialization ---
-if 'diary_entries' not in st.session_state:
-    # Initialize with the example data from your HTML
-    initial_data = {
-        'Diary Date': [datetime(2025, 8, 15).date()],
-        'Engineer': ['FS'],
-        'Location/BH ID': ['CB5-22'],
-        'Activities Summary': ['Drilling 14.5m-20.5m, BH completion, install/backfill activities'],
-        'Verification Status': ['VERIFIED'],
-        'Verified By': [''],
-        'Verification Date': [None],
-        'Issues/Notes': ['']
-    }
-    st.session_state.diary_entries = pd.DataFrame(initial_data)
+    # --- Session State Initialization ---
+    if 'diary_entries' not in st.session_state:
+        # Initialize with the example data from your HTML
+        initial_data = {
+            'Diary Date': [datetime(2025, 8, 15).date()],
+            'Engineer': ['FS'],
+            'Location/BH ID': ['CB5-22'],
+            'Activities Summary': ['Drilling 14.5m-20.5m, BH completion, install/backfill activities'],
+            'Verification Status': ['VERIFIED'],
+            'Verified By': [''],
+            'Verification Date': [None],
+            'Issues/Notes': ['']
+        }
+        st.session_state.diary_entries = pd.DataFrame(initial_data)
 
-# --- App Layout ---
+    # --- App Layout ---
 
-# Header Section
-st.markdown("""
-<div class="header">
-    <h1>Site Diary Verification Log</h1>
-    <p>Beauly - Peterhead Package 2 - Investigation Works</p>
-</div>
-""", unsafe_allow_html=True)
+    # Header Section
+    st.markdown("""
+    <div class="header">
+        <h1>Site Diary Verification Log</h1>
+        <p>Beauly - Peterhead Package 2 - Investigation Works</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-# Project Info Section
-with st.container():
-    st.subheader("Project Details")
-    cols = st.columns(4)
-    project_no = cols[0].text_input("Project No:", value="CGN/05281", disabled=True)
-    scheme = cols[1].text_input("Scheme:", value="Beauly - Peterhead Package 2")
-    verifier = cols[2].text_input("Verifier:", placeholder="Your Name")
-    verification_date = cols[3].date_input("Verification Date:", value=datetime.today())
+    # Project Info Section
+    with st.container():
+        st.subheader("Project Details")
+        cols = st.columns(4)
+        project_no = cols[0].text_input("Project No:", value="CGN/05281", disabled=True)
+        scheme = cols[1].text_input("Scheme:", value="Beauly - Peterhead Package 2")
+        verifier = cols[2].text_input("Verifier:", placeholder="Your Name")
+        verification_date = cols[3].date_input("Verification Date:", value=datetime.today())
 
-    project_info_data = {
-        "Project No": project_no,
-        "Scheme": scheme,
-        "Verifier": verifier,
-        "Verification Date": verification_date.strftime("%Y-%m-%d")
-    }
+        project_info_data = {
+            "Project No": project_no,
+            "Scheme": scheme,
+            "Verifier": verifier,
+            "Verification Date": verification_date.strftime("%Y-%m-%d")
+        }
 
 
-# Verification Table Section
-st.subheader("Site Diary Verification Entries")
+    # Verification Table Section
+    st.subheader("Site Diary Verification Entries")
 
-# Use st.data_editor to make the dataframe interactive
-edited_df = st.data_editor(
-    st.session_state.diary_entries,
-    num_rows="dynamic",
-    use_container_width=True,
-    column_config={
-        "Diary Date": st.column_config.DateColumn(
-            "Diary Date",
-            format="DD.MM.YYYY",
-            required=True
-        ),
-        "Verification Status": st.column_config.SelectboxColumn(
-            "Verification Status",
-            options=["PENDING", "VERIFIED", "ISSUES FOUND"],
-            required=True
-        ),
-        "Verification Date": st.column_config.DateColumn(
-            "Verification Date",
-            format="DD.MM.YYYY"
+    # Use st.data_editor to make the dataframe interactive
+    edited_df = st.data_editor(
+        st.session_state.diary_entries,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "Diary Date": st.column_config.DateColumn(
+                "Diary Date",
+                format="DD.MM.YYYY",
+                required=True
+            ),
+            "Verification Status": st.column_config.SelectboxColumn(
+                "Verification Status",
+                options=["PENDING", "VERIFIED", "ISSUES FOUND"],
+                required=True
+            ),
+            "Verification Date": st.column_config.DateColumn(
+                "Verification Date",
+                format="DD.MM.YYYY"
+            )
+        },
+        key="data_editor"
+    )
+    st.session_state.diary_entries = edited_df
+
+
+    # Checklist and Notes Section
+    with st.expander("Show Verification Checklist & Notes", expanded=True):
+        st.subheader("Verification Checklist")
+        
+        checklist_options = {
+            "Time records are consistent and realistic": False,
+            "Activities align with project schedule and scope": False,
+            "Equipment lists are accurate and complete": False,
+            "Personnel records match expected crew": False,
+            "Weather conditions are appropriately recorded": False,
+            "Safety activities (toolbox talks, briefings) are documented": False,
+            "Progress notes are detailed and accurate": False,
+            "All required signatures are present": False,
+        }
+        
+        checklist_state = {}
+        cols = st.columns(2)
+        i = 0
+        for option, default_val in checklist_options.items():
+            with cols[i % 2]:
+                checklist_state[option] = st.checkbox(option, value=default_val, key=f"check_{i}")
+            i += 1
+
+        st.subheader("Overall Verification Notes")
+        overall_notes = st.text_area(
+            "Enter any overall comments about the diary accuracy, discrepancies found, or additional observations...",
+            height=150,
+            label_visibility="collapsed"
         )
-    },
-    key="data_editor"
-)
-st.session_state.diary_entries = edited_df
 
+    # Signature Section
+    with st.container():
+        st.subheader("Verification Sign-off")
+        sig_cols = st.columns(3)
+        with sig_cols[0]:
+            st.markdown("**Client Verifier**")
+            client_name = st.text_input("Print Name", key="client_name")
+            client_date = st.date_input("Date", key="client_date")
+        with sig_cols[1]:
+            st.markdown("**Project Manager**")
+            pm_name = st.text_input("Print Name", key="pm_name")
+            pm_date = st.date_input("Date", key="pm_date")
+        with sig_cols[2]:
+            st.markdown("**Senior Engineer**")
+            se_name = st.text_input("Print Name", key="se_name")
+            se_date = st.date_input("Date", key="se_date")
 
-# Checklist and Notes Section
-with st.expander("Show Verification Checklist & Notes", expanded=True):
-    st.subheader("Verification Checklist")
-    
-    checklist_options = {
-        "Time records are consistent and realistic": False,
-        "Activities align with project schedule and scope": False,
-        "Equipment lists are accurate and complete": False,
-        "Personnel records match expected crew": False,
-        "Weather conditions are appropriately recorded": False,
-        "Safety activities (toolbox talks, briefings) are documented": False,
-        "Progress notes are detailed and accurate": False,
-        "All required signatures are present": False,
-    }
-    
-    checklist_state = {}
-    cols = st.columns(2)
-    i = 0
-    for option, default_val in checklist_options.items():
-        with cols[i % 2]:
-            checklist_state[option] = st.checkbox(option, value=default_val, key=f"check_{i}")
-        i += 1
+        signature_data = {
+            "Client Verifier": {"name": client_name, "date": client_date},
+            "Project Manager": {"name": pm_name, "date": pm_date},
+            "Senior Engineer": {"name": se_name, "date": se_date}
+        }
 
-    st.subheader("Overall Verification Notes")
-    overall_notes = st.text_area(
-        "Enter any overall comments about the diary accuracy, discrepancies found, or additional observations...",
-        height=150,
-        label_visibility="collapsed"
+    # --- Sidebar for Downloads ---
+    st.sidebar.title("Export Report")
+    st.sidebar.info("Download a copy of the current report in your desired format.")
+
+    # Prepare data for download
+    df_for_download = st.session_state.diary_entries.copy()
+    # Format dates as strings for cleaner export
+    for col in ['Diary Date', 'Verification Date']:
+        if col in df_for_download.columns:
+            df_for_download[col] = pd.to_datetime(df_for_download[col]).dt.strftime('%d.%m.%Y')
+
+    # XLSX Download Button
+    excel_data = to_excel(df_for_download)
+    st.sidebar.download_button(
+        label="📥 Download as XLSX",
+        data=excel_data,
+        file_name=f"Site_Diary_Log_{datetime.now().strftime('%Y-%m-%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-# Signature Section
-with st.container():
-    st.subheader("Verification Sign-off")
-    sig_cols = st.columns(3)
-    with sig_cols[0]:
-        st.markdown("**Client Verifier**")
-        client_name = st.text_input("Print Name", key="client_name")
-        client_date = st.date_input("Date", key="client_date")
-    with sig_cols[1]:
-        st.markdown("**Project Manager**")
-        pm_name = st.text_input("Print Name", key="pm_name")
-        pm_date = st.date_input("Date", key="pm_date")
-    with sig_cols[2]:
-        st.markdown("**Senior Engineer**")
-        se_name = st.text_input("Print Name", key="se_name")
-        se_date = st.date_input("Date", key="se_date")
+    # PDF Download Button
+    pdf_data = generate_pdf(project_info_data, df_for_download, checklist_state, overall_notes, signature_data)
+    st.sidebar.download_button(
+        label="📄 Download as PDF",
+        data=pdf_data,
+        file_name=f"Site_Diary_Log_{datetime.now().strftime('%Y-%m-%d')}.pdf",
+        mime="application/pdf",
+    )
 
-    signature_data = {
-        "Client Verifier": {"name": client_name, "date": client_date},
-        "Project Manager": {"name": pm_name, "date": pm_date},
-        "Senior Engineer": {"name": se_name, "date": se_date}
-    }
-
-# --- Sidebar for Downloads ---
-st.sidebar.title("Export Report")
-st.sidebar.info("Download a copy of the current report in your desired format.")
-
-# Prepare data for download
-df_for_download = st.session_state.diary_entries.copy()
-# Format dates as strings for cleaner export
-for col in ['Diary Date', 'Verification Date']:
-    if col in df_for_download.columns:
-        df_for_download[col] = pd.to_datetime(df_for_download[col]).dt.strftime('%d.%m.%Y')
-
-# XLSX Download Button
-excel_data = to_excel(df_for_download)
-st.sidebar.download_button(
-    label="📥 Download as XLSX",
-    data=excel_data,
-    file_name=f"Site_Diary_Log_{datetime.now().strftime('%Y-%m-%d')}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-)
-
-# PDF Download Button
-pdf_data = generate_pdf(project_info_data, df_for_download, checklist_state, overall_notes, signature_data)
-st.sidebar.download_button(
-    label="📄 Download as PDF",
-    data=pdf_data,
-    file_name=f"Site_Diary_Log_{datetime.now().strftime('%Y-%m-%d')}.pdf",
-    mime="application/pdf",
-)
+# --- App Execution ---
+if check_password():
+    main_app()
