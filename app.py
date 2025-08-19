@@ -5,6 +5,7 @@ from io import BytesIO
 from fpdf import FPDF
 import json
 import glob
+import os
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -50,6 +51,12 @@ def local_css():
     """, unsafe_allow_html=True)
 
 # --- Data Handling & State Management Functions ---
+
+def get_name_from_filename(filename):
+    """Extracts the base name from a filename, e.g., 'Kevin Dorward.json' -> 'Kevin Dorward'"""
+    if filename:
+        return os.path.splitext(os.path.basename(filename))[0]
+    return ""
 
 def to_excel(df):
     output = BytesIO()
@@ -141,56 +148,65 @@ def main_app():
     # --- SIDEBAR: Save, Load, and Export ---
     with st.sidebar:
         st.title("Actions")
-
-        # --- Save/Load State ---
         st.header("Save & Load Report")
         
-        # Load functionality
         saved_files = glob.glob("*.json")
         if saved_files:
-            selected_file_to_load = st.selectbox("Select a report to load:", [""] + saved_files)
+            selected_file_to_load = st.selectbox("Select a report to load:", [""] + saved_files, key="load_selector")
             if st.button("Load Selected Report"):
                 with open(selected_file_to_load, 'r') as f:
                     state = json.load(f)
                     st.session_state.diary_entries = pd.read_json(state['diary_entries'])
                     st.session_state.checklist_state = state['checklist_state']
                     st.session_state.overall_notes = state['overall_notes']
-                    st.session_state.se_name = state['signature_data']['Site Engineer']['name']
-                    # Handle date loading
+                    
+                    # *** NEW: Set Print Name from loaded filename ***
+                    st.session_state.se_name = get_name_from_filename(selected_file_to_load)
+                    
                     date_str = state['signature_data']['Site Engineer']['date']
                     st.session_state.se_date = datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else datetime.now().date()
-                    # Also load project details
                     st.session_state.project_no = state['project_info']['Project No']
                     st.session_state.gi_package = state['project_info']['GI Package']
                 st.success(f"Successfully loaded '{selected_file_to_load}'")
                 st.rerun()
 
-        # Save functionality
-        default_filename = f"report_{datetime.now().strftime('%Y-%m-%d')}.json"
-        file_to_save = st.text_input("Enter filename to save:", default_filename)
+        default_filename = "Your Name.json"
+        file_to_save = st.text_input("Enter your name to save file:", default_filename)
         
         if st.button("Save Current Report"):
-            # Gather all current data
-            project_info_data = {"Project No": st.session_state.project_no, "Scheme": st.session_state.scheme_name, "GI Package": st.session_state.gi_package, "Subcontractor": st.session_state.subcontractor_name}
-            signature_data = {"Site Engineer": {"name": st.session_state.se_name, "date": st.session_state.se_date.strftime('%Y-%m-%d')}}
+            verifier_name = get_name_from_filename(file_to_save)
+            if verifier_name and verifier_name != "Your Name":
+                # *** NEW: Update state with name from filename before saving ***
+                st.session_state.se_name = verifier_name
+                
+                # Create a copy to modify for saving
+                df_to_save = st.session_state.diary_entries.copy()
+                # Fill empty 'Verified By' fields with the verifier's name
+                df_to_save['Verified By'] = df_to_save['Verified By'].replace(['', None], verifier_name)
+                st.session_state.diary_entries = df_to_save
 
-            current_state = {
-                'project_info': project_info_data,
-                'diary_entries': st.session_state.diary_entries.to_json(),
-                'checklist_state': st.session_state.checklist_state,
-                'overall_notes': st.session_state.overall_notes,
-                'signature_data': signature_data
-            }
-            with open(file_to_save, 'w') as f:
-                json.dump(current_state, f, indent=4)
-            st.success(f"Report saved as '{file_to_save}'")
+                # Gather all current data for saving
+                project_info_data = {"Project No": st.session_state.project_no, "Scheme": st.session_state.scheme_name, "GI Package": st.session_state.gi_package, "Subcontractor": st.session_state.subcontractor_name}
+                signature_data = {"Site Engineer": {"name": st.session_state.se_name, "date": st.session_state.se_date.strftime('%Y-%m-%d')}}
+
+                current_state = {
+                    'project_info': project_info_data,
+                    'diary_entries': df_to_save.to_json(),
+                    'checklist_state': st.session_state.checklist_state,
+                    'overall_notes': st.session_state.overall_notes,
+                    'signature_data': signature_data
+                }
+                with open(file_to_save, 'w') as f:
+                    json.dump(current_state, f, indent=4)
+                st.success(f"Report saved as '{file_to_save}'")
+                st.rerun()
+            else:
+                st.warning("Please enter a valid name in the filename box before saving.")
 
         st.divider()
-        # --- Export (Download) ---
         st.header("Export Report")
         st.info("Download a copy of the current report in your desired format.")
         
-        # Prepare data for download functions
         df_for_download = st.session_state.diary_entries.copy()
         for col in ['Diary Date', 'Verification Date']:
             if col in df_for_download.columns and not df_for_download[col].isnull().all():
@@ -204,7 +220,6 @@ def main_app():
         
         pdf_data = generate_pdf(final_project_info, df_for_download, st.session_state.checklist_state, st.session_state.overall_notes, final_signature_data)
         st.download_button(label="📄 Download as PDF", data=pdf_data, file_name=f"Site_Diary_Log_{datetime.now().strftime('%Y-%m-%d')}.pdf", mime="application/pdf")
-
 
     # --- MAIN PAGE LAYOUT ---
     scheme_title = st.session_state.get('scheme_name', 'Site Diary Verification Log')
