@@ -144,9 +144,21 @@ def generate_pdf(project_info, df, checklist_items, notes, signatures):
     # Table Rows
     pdf.set_font("Helvetica", size=7)
     for index, row in df.iterrows():
+        # Using multi_cell for potentially long text fields to allow wrapping
+        x_before = pdf.get_x()
+        y_before = pdf.get_y()
+        max_height = 8 
         for i, item in enumerate(row):
-             pdf.cell(col_widths[i], 8, str(item), 1, 0)
-        pdf.ln()
+            pdf.multi_cell(col_widths[i], 8, str(item), 1, 'L')
+            # Calculate height of the tallest cell in the row
+            current_y = pdf.get_y()
+            height = current_y - y_before
+            if height > max_height:
+                max_height = height
+            # Move to next cell position
+            pdf.set_xy(x_before + sum(col_widths[:i+2]), y_before)
+        pdf.set_xy(x_before, y_before + max_height)
+
 
     # Checklist
     pdf.ln(10)
@@ -162,7 +174,9 @@ def generate_pdf(project_info, df, checklist_items, notes, signatures):
     pdf.set_font("Helvetica", 'B', size=14)
     pdf.cell(0, 10, "Overall Verification Notes", 0, 1, 'L')
     pdf.set_font("Helvetica", size=11)
-    pdf.multi_cell(0, 5, notes)
+    # Encode notes to latin-1, replacing unsupported characters
+    encoded_notes = notes.encode('latin-1', 'replace').decode('latin-1')
+    pdf.multi_cell(0, 5, encoded_notes)
     
     # Signatures
     pdf.ln(10)
@@ -170,9 +184,11 @@ def generate_pdf(project_info, df, checklist_items, notes, signatures):
     pdf.cell(0, 10, "Verification Sign-off", 0, 1, 'L')
     pdf.set_font("Helvetica", size=11)
     for title, info in signatures.items():
-        pdf.cell(0, 8, f"{title}: {info['name']} (Date: {info['date'].strftime('%Y-%m-%d') if info['date'] else 'N/A'})", 0, 1)
+        # Encode name to latin-1, replacing unsupported characters
+        encoded_name = info['name'].encode('latin-1', 'replace').decode('latin-1')
+        pdf.cell(0, 8, f"{title}: {encoded_name} (Date: {info['date'].strftime('%Y-%m-%d') if info['date'] else 'N/A'})", 0, 1)
 
-    return pdf.output(dest='S').encode('latin-1')
+    return pdf.output()
 
 # --- Main Application Logic ---
 def main_app():
@@ -181,18 +197,18 @@ def main_app():
 
     # --- Session State Initialization ---
     if 'diary_entries' not in st.session_state:
-        # Initialize with the example data
-        initial_data = {
-            'Diary Date': [datetime(2025, 8, 19).date()],
-            'Engineer': ['FS'],
-            'Location/BH ID': ['CB5-22'],
-            'Activities Summary': ['Drilling 14.5m-20.5m, BH completion, install/backfill activities'],
-            'Verification Status': ['VERIFIED'],
-            'Verified By': [''],
-            'Verification Date': [None],
-            'Issues/Notes': ['']
+        # Initialize with an EMPTY DataFrame with the correct columns and types
+        empty_data = {
+            'Diary Date': pd.Series(dtype='datetime64[ns]'),
+            'Engineer': pd.Series(dtype='str'),
+            'Location/BH ID': pd.Series(dtype='str'),
+            'Activities Summary': pd.Series(dtype='str'),
+            'Verification Status': pd.Series(dtype='str'),
+            'Verified By': pd.Series(dtype='str'),
+            'Verification Date': pd.Series(dtype='datetime64[ns]'),
+            'Issues/Notes': pd.Series(dtype='str')
         }
-        st.session_state.diary_entries = pd.DataFrame(initial_data)
+        st.session_state.diary_entries = pd.DataFrame(empty_data)
 
     # --- App Layout ---
 
@@ -261,7 +277,7 @@ def main_app():
         column_config={
             "Diary Date": st.column_config.DateColumn(
                 "Diary Date",
-                format="DD.MM.YYYY",
+                format="YYYY-MM-DD",
                 required=True
             ),
             "Verification Status": st.column_config.SelectboxColumn(
@@ -271,7 +287,7 @@ def main_app():
             ),
             "Verification Date": st.column_config.DateColumn(
                 "Verification Date",
-                format="DD.MM.YYYY"
+                format="YYYY-MM-DD"
             )
         },
         key="data_editor"
@@ -328,7 +344,7 @@ def main_app():
     df_for_download = st.session_state.diary_entries.copy()
     # Format dates as strings for cleaner export
     for col in ['Diary Date', 'Verification Date']:
-        if col in df_for_download.columns:
+        if col in df_for_download.columns and not df_for_download[col].isnull().all():
             df_for_download[col] = pd.to_datetime(df_for_download[col]).dt.strftime('%d.%m.%Y')
 
     # XLSX Download Button
