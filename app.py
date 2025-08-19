@@ -176,12 +176,9 @@ def main_app():
             if verifier_name and verifier_name != "Your Name":
                 st.session_state.se_name = verifier_name
                 df_to_save = st.session_state.diary_entries.copy()
-                
-                # *** FIX 2: Also populate empty 'Engineer' fields ***
                 df_to_save['Engineer'] = df_to_save['Engineer'].fillna('').replace('', verifier_name)
                 df_to_save['Verified By'] = df_to_save['Verified By'].fillna('').replace('', verifier_name)
                 st.session_state.diary_entries = df_to_save
-                
                 project_info_data = {"Project No": st.session_state.project_no, "Scheme": st.session_state.scheme_name, "GI Package": st.session_state.gi_package, "Subcontractor": st.session_state.subcontractor_name}
                 signature_data = {"Site Engineer": {"name": st.session_state.se_name, "date": st.session_state.se_date.strftime('%Y-%m-%d')}}
                 current_state = {
@@ -232,13 +229,23 @@ def main_app():
         cols[3].text_input("Subcontractor:", value=subcontractor_name, disabled=True)
 
     st.subheader("Site Diary Verification Entries")
-    st.session_state.diary_entries = st.data_editor(st.session_state.diary_entries, num_rows="dynamic", use_container_width=True, key="data_editor",
-        hide_index=True, # <-- FIX 1: Hide the DataFrame index
+    edited_df = st.data_editor(st.session_state.diary_entries, num_rows="dynamic", use_container_width=True, key="data_editor",
+        hide_index=True,
         column_config={
             "Diary Date": st.column_config.DateColumn("Diary Date", format="YYYY-MM-DD", required=True),
             "Verification Status": st.column_config.SelectboxColumn("Verification Status", options=["PENDING", "VERIFIED", "ISSUES FOUND"], required=True),
             "Verification Date": st.column_config.DateColumn("Verification Date", format="YYYY-MM-DD")
         })
+
+    # --- FIX: Clean up the DataFrame after editing ---
+    # This loop converts any `None` values in text columns to empty strings ('')
+    # to prevent the cells from becoming read-only.
+    string_columns = ['Engineer', 'Location/BH ID', 'Activities Summary', 'Verified By', 'Issues/Notes']
+    for col in string_columns:
+        if col in edited_df.columns:
+            edited_df[col] = edited_df[col].fillna('').astype(str)
+    st.session_state.diary_entries = edited_df
+    # --- END FIX ---
 
     with st.expander("Show Verification Checklist & Notes", expanded=True):
         st.subheader("Verification Checklist")
