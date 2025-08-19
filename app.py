@@ -142,7 +142,7 @@ def main_app():
         ]}
         st.session_state.overall_notes = ""
         st.session_state.se_name = ""
-        st.session_state.se_date = datetime.now().date()
+        st.session_state.se_date = datetime(2025, 8, 19).date() # Use static date for consistency
         st.session_state.app_loaded = True
 
     # --- SIDEBAR: Save, Load, and Export ---
@@ -156,15 +156,20 @@ def main_app():
             if st.button("Load Selected Report"):
                 with open(selected_file_to_load, 'r') as f:
                     state = json.load(f)
-                    st.session_state.diary_entries = pd.read_json(state['diary_entries'])
+                    
+                    # Read the dataframe from JSON
+                    df_loaded = pd.read_json(state['diary_entries'])
+                    
+                    # *** FIX: Convert date columns from text back to datetime objects ***
+                    df_loaded['Diary Date'] = pd.to_datetime(df_loaded['Diary Date'], errors='coerce')
+                    df_loaded['Verification Date'] = pd.to_datetime(df_loaded['Verification Date'], errors='coerce')
+                    
+                    st.session_state.diary_entries = df_loaded
                     st.session_state.checklist_state = state['checklist_state']
                     st.session_state.overall_notes = state['overall_notes']
-                    
-                    # *** NEW: Set Print Name from loaded filename ***
                     st.session_state.se_name = get_name_from_filename(selected_file_to_load)
-                    
                     date_str = state['signature_data']['Site Engineer']['date']
-                    st.session_state.se_date = datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else datetime.now().date()
+                    st.session_state.se_date = datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else datetime(2025, 8, 19).date()
                     st.session_state.project_no = state['project_info']['Project No']
                     st.session_state.gi_package = state['project_info']['GI Package']
                 st.success(f"Successfully loaded '{selected_file_to_load}'")
@@ -176,24 +181,15 @@ def main_app():
         if st.button("Save Current Report"):
             verifier_name = get_name_from_filename(file_to_save)
             if verifier_name and verifier_name != "Your Name":
-                # *** NEW: Update state with name from filename before saving ***
                 st.session_state.se_name = verifier_name
-                
-                # Create a copy to modify for saving
                 df_to_save = st.session_state.diary_entries.copy()
-                # Fill empty 'Verified By' fields with the verifier's name
                 df_to_save['Verified By'] = df_to_save['Verified By'].replace(['', None], verifier_name)
                 st.session_state.diary_entries = df_to_save
-
-                # Gather all current data for saving
                 project_info_data = {"Project No": st.session_state.project_no, "Scheme": st.session_state.scheme_name, "GI Package": st.session_state.gi_package, "Subcontractor": st.session_state.subcontractor_name}
                 signature_data = {"Site Engineer": {"name": st.session_state.se_name, "date": st.session_state.se_date.strftime('%Y-%m-%d')}}
-
                 current_state = {
-                    'project_info': project_info_data,
-                    'diary_entries': df_to_save.to_json(),
-                    'checklist_state': st.session_state.checklist_state,
-                    'overall_notes': st.session_state.overall_notes,
+                    'project_info': project_info_data, 'diary_entries': df_to_save.to_json(date_format='iso'),
+                    'checklist_state': st.session_state.checklist_state, 'overall_notes': st.session_state.overall_notes,
                     'signature_data': signature_data
                 }
                 with open(file_to_save, 'w') as f:
